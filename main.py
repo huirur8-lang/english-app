@@ -53,10 +53,13 @@ with tab1:
         col1.write(f"### {eng} \n ({chi})")
         if col2.button(f"🔊", key=f"btn_{eng}"):
             # 兼容手机浏览器的网页朗读
+            # 强化版发音脚本
             st.components.v1.html(f"""
                 <script>
+                window.speechSynthesis.cancel(); 
                 var msg = new SpeechSynthesisUtterance('{eng}');
                 msg.lang = 'en-US';
+                msg.rate = 0.8; 
                 window.speechSynthesis.speak(msg);
                 </script>
             """, height=0)
