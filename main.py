@@ -1,6 +1,25 @@
 import streamlit as st
 import random
-
+st.markdown("""
+    <style>
+    /* 1. 隐藏 Streamlit 右上角的菜单和底部的 GitHub 链接 */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* 2. 移除页面顶部多余的空白，让内容直接置顶 */
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    
+    /* 3. 让播放按钮看起来更整洁 */
+    audio {
+        height: 30px;
+        width: 100%;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 # 配置
 st.set_page_config(page_title="二年级英语每日练", page_icon="🎒")
 st.title("🎒 二年级英语：30天挑战")
@@ -78,3 +97,4 @@ with tab2:
     if st.button("🏁 完成挑战，查看总分"):
         st.balloons()
         st.metric("今日得分", f"{score} / {len(words)}")
+st.balloons()
