@@ -51,18 +51,9 @@ with tab1:
     for eng, chi in words.items():
         col1, col2 = st.columns([4, 1])
         col1.write(f"### {eng} \n ({chi})")
-        if col2.button(f"🔊", key=f"btn_{eng}"):
-            # 兼容手机浏览器的网页朗读
-            # 强化版发音脚本
-            st.components.v1.html(f"""
-                <script>
-                window.speechSynthesis.cancel(); 
-                var msg = new SpeechSynthesisUtterance('{eng}');
-                msg.lang = 'en-US';
-                msg.rate = 0.8; 
-                window.speechSynthesis.speak(msg);
-                </script>
-            """, height=0)
+        # 直接调用有道词典的真人发音接口，这是最稳的方法
+        audio_url = f"https://dict.youdao.com/dictvoice?audio={eng}&type=2"
+        col2.audio(audio_url, format="audio/mp3")
 
 with tab2:
     st.warning("听写模式：拼写正确后会自动显示下一个。")
