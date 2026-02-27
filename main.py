@@ -2,97 +2,133 @@ import streamlit as st
 import random
 import os
 
-# 1. 页面基础配置
+# 1. 页面配置
 st.set_page_config(page_title="英语天天练", page_icon="🎨", layout="centered")
 
-# 2. 界面美化 CSS (进一步优化按钮样式)
+# 2. 界面美化 CSS
 st.markdown("""
     <style>
     header, #MainMenu, footer {visibility: hidden;}
     .block-container {padding-top: 1rem; max-width: 500px;}
-    
-    .stMarkdown, .stImage, .stAudio {
-        display: flex;
-        justify-content: center;
-        text-align: center;
-    }
-    
-    /* 挑战模式的大按钮样式 */
+    .stAudio {width: 100%;}
     div.stButton > button {
-        width: 100%;
-        border-radius: 15px;
-        height: 3em;
-        font-size: 1.1rem;
-        border: 2px solid #E0E0E0;
+        width: 100%; border-radius: 15px; font-weight: bold; height: 3.5em;
+    }
+    .sentence-box {
+        background-color: #f0f2f6;
+        padding: 10px;
+        border-radius: 10px;
+        border-left: 5px solid #FF4B4B;
+        margin: 10px 0;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 单词数据库 (这里仅展示前几天，你可以继续保留你原来的完整库)
+# 3. 增强版数据库（加入金句）
 course_data = {
-    "1": {"pencil": "铅笔", "pen": "钢笔", "book": "书", "bag": "书包", "ruler": "尺子", "eraser": "橡皮", "desk": "书桌", "chair": "椅子"},
-    "2": {"eye": "眼睛", "ear": "耳朵", "nose": "鼻子", "mouth": "嘴巴", "face": "脸", "hand": "手", "arm": "胳膊", "leg": "腿"},
+    "1": {
+        "pencil": {"chi": "铅笔", "sent": "I have a pencil."},
+        "pen": {"chi": "钢笔", "sent": "This is a pen."},
+        "book": {"chi": "书", "sent": "Open your book."},
+        "bag": {"chi": "书包", "sent": "My bag is green."},
+        "ruler": {"chi": "尺子", "sent": "Show me your ruler."},
+        "eraser": {"chi": "橡皮", "sent": "I need an eraser."},
+        "desk": {"chi": "书桌", "sent": "It is on the desk."},
+        "chair": {"chi": "椅子", "sent": "Sit on the chair."}
+    },
+    "2": {
+        "eye": {"chi": "眼睛", "sent": "Look into my eyes."},
+        "ear": {"chi": "耳朵", "sent": "I hear with my ears."},
+        "nose": {"chi": "鼻子", "sent": "Touch your nose."},
+        "mouth": {"chi": "嘴巴", "sent": "Open your mouth."},
+        "face": {"chi": "脸", "sent": "Wash your face."},
+        "hand": {"chi": "手", "sent": "Clap your hands."},
+        "arm": {"chi": "胳膊", "sent": "This is my arm."},
+        "leg": {"chi": "腿", "sent": "My legs are long."}
+    }
 }
 
-# --- 4. 进度选择 ---
+# 顶部导航
 st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🌟 英语天天练</h1>", unsafe_allow_html=True)
-day = st.selectbox("📅 选择今天学习哪一天：", list(course_data.keys()), index=0)
-words = course_data[day]
+day = st.selectbox("📅 选择学习进度：", list(course_data.keys()), index=0)
+words_info = course_data[day]
+words_list = list(words_info.keys())
 
-st.markdown("---")
+tab1, tab2 = st.tabs(["📚 学习 & 跟读", "🎮 综合挑战"])
 
-tab1, tab2 = st.tabs(["📚 学习模式", "🎮 挑战模式"])
-
-# --- 5. 学习模式 ---
+# --- 学习 & 跟读模式 ---
 with tab1:
-    for eng, chi in words.items():
+    for eng, info in words_info.items():
         img_path = f"assets/day{day}/{eng}.png"
         if os.path.exists(img_path):
             st.image(img_path, width=280)
         
-        st.markdown(f"<h2 style='text-align: center;'>{eng}</h2>", unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align: center;'>({chi})</p>", unsafe_allow_html=True)
+        st.markdown(f"<h2 style='text-align: center;'>{eng} <small style='color:gray;'>({info['chi']})</small></h2>", unsafe_allow_html=True)
         
-        audio_url = f"https://dict.youdao.com/dictvoice?audio={eng}&type=2"
-        st.audio(audio_url)
-        st.markdown("<br>", unsafe_allow_html=True)
+        # 单词发音
+        st.audio(f"https://dict.youdao.com/dictvoice?audio={eng}&type=2")
+        
+        # 每日金句
+        st.markdown(f"""<div class='sentence-box'>
+            <p style='margin-bottom:5px;'><b>📖 金句阅读：</b></p>
+            <p style='font-size:1.2rem;'>{info['sent']}</p>
+        </div>""", unsafe_allow_html=True)
+        st.audio(f"https://dict.youdao.com/dictvoice?audio={info['sent'].replace(' ', '%20')}&type=2")
+        
+        # 跟读录音功能 (Streamlit 官方原生录音组件)
+        st.write("🎤 听一听，自己试着读一遍：")
+        st.audio_input(key=f"rec_{eng}")
+        
+        st.markdown("---")
 
-# --- 6. 挑战模式 (优化版：听音选图) ---
+# --- 综合挑战模式 ---
 with tab2:
-    # 逻辑初始化
-    if 'quiz_word' not in st.session_state or st.session_state.get('last_day') != day:
-        st.session_state.last_day = day
-        target = random.choice(list(words.keys()))
-        options = random.sample(list(words.keys()), 4)
-        if target not in options: options[0] = target
-        random.shuffle(options)
-        
-        st.session_state.quiz_word = target
-        st.session_state.quiz_options = options
+    # 初始化题目类型：0-听音选图，1-看图说词
+    if 'quiz_type' not in st.session_state or st.sidebar.button("♻️ 换一题"):
+        st.session_state.quiz_type = random.choice([0, 1])
+        st.session_state.quiz_word = random.choice(words_list)
+        st.session_state.quiz_options = random.sample(words_list, min(4, len(words_list)))
+        if st.session_state.quiz_word not in st.session_state.quiz_options:
+            st.session_state.quiz_options[0] = st.session_state.quiz_word
+        random.shuffle(st.session_state.quiz_options)
         st.session_state.answered = False
 
-    st.markdown("<h3 style='text-align: center;'>👂 听听这是哪个？</h3>", unsafe_allow_html=True)
-    st.audio(f"https://dict.youdao.com/dictvoice?audio={st.session_state.quiz_word}&type=2")
+    target = st.session_state.quiz_word
+    
+    # 题型 1：听音选图
+    if st.session_state.quiz_type == 0:
+        st.markdown("### 📢 题型：听音选图")
+        st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
+        cols = st.columns(2)
+        for i, opt in enumerate(st.session_state.quiz_options):
+            with cols[i % 2]:
+                opt_img = f"assets/day{day}/{opt}.png"
+                if os.path.exists(opt_img): st.image(opt_img, use_column_width=True)
+                if st.button("选这个", key=f"btn_{opt}"):
+                    if opt == target:
+                        st.success("太棒了！答对了！")
+                        st.balloons()
+                        st.session_state.answered = True
+                    else:
+                        st.error("再听听看？")
 
-    # 布局：2x2 图片墙
-    col1, col2 = st.columns(2)
-    for i, opt in enumerate(st.session_state.quiz_options):
-        with col1 if i % 2 == 0 else col2:
-            opt_img = f"assets/day{day}/{opt}.png"
-            if os.path.exists(opt_img):
-                st.image(opt_img, use_column_width=True)
-            
-            # 按钮只显示序号或简单的“选我”
-            if st.button(f"选择图片 {i+1}", key=f"btn_{opt}"):
-                if opt == st.session_state.quiz_word:
-                    st.success("✨ 答对了！太棒了！")
-                    st.balloons()
-                    st.session_state.answered = True
-                else:
-                    st.error("❌ 不对哦，再听听看")
+    # 题型 2：看图说词
+    else:
+        st.markdown("### 🖼️ 题型：看图说词")
+        st.write("这是什么？大声说出来！")
+        img_path = f"assets/day{day}/{target}.png"
+        if os.path.exists(img_path):
+            st.image(img_path, width=300)
+        
+        st.write("🎤 录下你的回答：")
+        st.audio_input(key="quiz_rec")
+        
+        if st.button("显示答案"):
+            st.info(f"正确答案是：{target} ({words_info[target]['chi']})")
+            st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
+            st.session_state.answered = True
 
     if st.session_state.get('answered'):
-        st.markdown("---")
-        if st.button("🌟 下一题 ➡️"):
-            del st.session_state.quiz_word
+        if st.button("下一题 ➡️"):
+            del st.session_state.quiz_type
             st.rerun()
