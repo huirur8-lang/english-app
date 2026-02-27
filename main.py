@@ -21,7 +21,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 # 配置
-st.set_page_config(page_title="英语天天练", page_icon="https://raw.githubusercontent.com/huirur8-lang/english-app/main/%E5%9B%BE%E6%A0%87%202333.jpg")
+st.set_page_config(page_title="英语天天练", page_icon="https://raw.githubusercontent.com/huirur8-lang/english-app/main/myapp.jpg")
 st.title("🎒 二年级英语：30天挑战")
 
 # 30天全主题单词数据库
