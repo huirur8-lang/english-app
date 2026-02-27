@@ -5,15 +5,13 @@ import os
 # 1. 基础配置
 st.set_page_config(page_title="英语天天练", page_icon="🎨", layout="centered")
 
-# 2. 界面美化
+# 2. 界面美化 CSS
 st.markdown("""
     <style>
     header, #MainMenu, footer {visibility: hidden;}
     .block-container {padding-top: 1rem; max-width: 500px;}
     .stAudio {width: 100%;}
-    /* 单词标题样式 */
     .word-title {text-align: center; color: #1E1E1E; margin-top: 10px;}
-    /* 金句方框样式 */
     .sent-box {
         background-color: #FFF4F4;
         padding: 15px;
@@ -21,10 +19,13 @@ st.markdown("""
         border: 1px solid #FFCACA;
         margin: 10px 0;
     }
+    div.stButton > button {
+        width: 100%; border-radius: 15px; font-weight: bold; height: 3.5em;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 增强数据库
+# 3. 增强版数据库 (已加入金句)
 course_data = {
     "1": {
         "pencil": {"chi": "铅笔", "sent": "I have a pencil."},
@@ -53,19 +54,20 @@ st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🌟 英语天天�
 day = st.selectbox("📅 选择进度：", list(course_data.keys()), index=0)
 words_info = course_data[day]
 
-tab1, tab2 = st.tabs(["📚 学习跟读", "🎮 挑战模式"])
+tab1, tab2 = st.tabs(["📚 学习跟读", "🎮 挑战挑战"])
 
-# --- 学习跟读 ---
+# --- 学习跟读模式 ---
 with tab1:
+    st.info(f"第 {day} 天：听一听，跟着读读看！")
     for eng, info in words_info.items():
         img_path = f"assets/day{day}/{eng}.png"
         if os.path.exists(img_path):
-            st.image(img_path, use_column_width=True)
+            st.image(img_path, width=280)
         
         st.markdown(f"<h2 class='word-title'>{eng} <small>({info['chi']})</small></h2>", unsafe_allow_html=True)
         st.audio(f"https://dict.youdao.com/dictvoice?audio={eng}&type=2")
         
-        # 句子部分
+        # 金句部分
         st.markdown(f"""<div class='sent-box'>
             <p style='color:#FF4B4B; font-weight:bold; margin-bottom:5px;'>📖 句子跟读：</p>
             <p style='font-size:1.2rem;'>{info['sent']}</p>
@@ -74,35 +76,34 @@ with tab1:
         
         st.markdown("---")
 
-# --- 综合挑战 ---
+# --- 综合挑战模式 ---
 with tab2:
-    # 初始化题目：0-听音选图，1-看图说词
-    if 'q_type' not in st.session_state or st.sidebar.button("♻️ 换一题"):
-        st.session_state.q_type = random.choice([0, 1])
-        st.session_state.q_word = random.choice(list(words_info.keys()))
-        # 选项
+    # 随机选择题型：听音选图 或 看图说词
+    if 'quiz_mode' not in st.session_state or st.sidebar.button("♻️ 换一组题"):
+        st.session_state.quiz_mode = random.choice(["listen", "speak"])
+        st.session_state.quiz_target = random.choice(list(words_info.keys()))
         opts = random.sample(list(words_info.keys()), 4)
-        if st.session_state.q_word not in opts: opts[0] = st.session_state.q_word
+        if st.session_state.quiz_target not in opts: opts[0] = st.session_state.quiz_target
         random.shuffle(opts)
-        st.session_state.q_opts = opts
-        st.session_state.show_ans = False
+        st.session_state.quiz_options = opts
+        st.session_state.quiz_answered = False
 
-    target = st.session_state.q_word
+    target = st.session_state.quiz_target
 
-    if st.session_state.q_type == 0:
+    if st.session_state.quiz_mode == "listen":
         st.write("### 👂 听声音，选图片")
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
         cols = st.columns(2)
-        for i, opt in enumerate(st.session_state.q_opts):
+        for i, opt in enumerate(st.session_state.quiz_options):
             with cols[i % 2]:
                 o_img = f"assets/day{day}/{opt}.png"
                 if os.path.exists(o_img): st.image(o_img, use_column_width=True)
-                if st.button("选我", key=f"sel_{opt}"):
+                if st.button(f"图片 {i+1}", key=f"sel_{opt}"):
                     if opt == target:
                         st.success("对啦！🎉")
                         st.balloons()
-                        st.session_state.show_ans = True
-                    else: st.error("不对哦~")
+                        st.session_state.quiz_answered = True
+                    else: st.error("不对哦，再听听看~")
     else:
         st.write("### 🖼️ 看图说词")
         st.write("大声说出这是什么？")
@@ -110,11 +111,11 @@ with tab2:
         if os.path.exists(t_img): st.image(t_img, width=300)
         
         if st.button("检查答案"):
-            st.session_state.show_ans = True
+            st.session_state.quiz_answered = True
             
-    if st.session_state.show_ans:
-        st.info(f"结果是：{target}")
+    if st.session_state.get('quiz_answered'):
+        st.info(f"结果是：{target} ({words_info[target]['chi']})")
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
         if st.button("下一题 ➡️"):
-            del st.session_state.q_type
+            del st.session_state.quiz_mode
             st.rerun()
