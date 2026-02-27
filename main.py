@@ -2,21 +2,48 @@ import streamlit as st
 import random
 import os
 
-# 1. 基础配置
-st.set_page_config(page_title="英语天天练", page_icon="🎨", layout="centered")
+# 1. 页面基础配置
+st.set_page_config(page_title="灿灿学英语", page_icon="⭐", layout="centered")
 
 # 2. 界面美化 CSS
 st.markdown("""
     <style>
     header, #MainMenu, footer {visibility: hidden;}
-    .block-container {padding-top: 1rem; max-width: 500px;}
+    .block-container {padding-top: 1.5rem; max-width: 500px;}
     .stAudio {width: 100%;}
+    
+    /* 标题样式 */
+    .main-title {
+        text-align: center; 
+        color: #FF4B4B; 
+        font-size: 2.2rem; 
+        margin-bottom: 5px;
+    }
+    /* 鼓励语样式 */
+    .slogan {
+        text-align: center; 
+        color: #666; 
+        font-size: 1rem; 
+        margin-bottom: 20px;
+        padding: 0 10px;
+    }
+    
     .word-title {text-align: center; color: #1E1E1E; margin-top: 10px;}
-    .sent-box { background-color: #FFF4F4; padding: 15px; border-radius: 15px; border: 1px solid #FFCACA; margin: 10px 0; }
-    /* 让按钮更圆润，适合孩子点击 */
+    .sent-box { 
+        background-color: #FFF4F4; 
+        padding: 15px; 
+        border-radius: 15px; 
+        border: 1px solid #FFCACA; 
+        margin: 10px 0; 
+    }
+    
+    /* 按钮美化 */
     div.stButton > button {
-        width: 100%; border-radius: 15px; font-weight: bold; height: 3em;
-        background-color: #f0f2f6; border: 1px solid #d1d5db;
+        width: 100%; 
+        border-radius: 15px; 
+        font-weight: bold; 
+        height: 3.5em;
+        background-color: #f0f2f6;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -55,13 +82,16 @@ course_data = {
     }
 }
 
-st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🌟 英语天天练</h1>", unsafe_allow_html=True)
-day = st.selectbox("📅 选择进度：", list(course_data.keys()), index=len(list(course_data.keys()))-1)
+# --- 4. 灿灿专属头部 ---
+st.markdown("<h1 class='main-title'>🌟 灿灿学英语</h1>", unsafe_allow_html=True)
+st.markdown("<p class='slogan'>每一天的进步，都是灿灿闪闪发光的小勋章！✨</p>", unsafe_allow_html=True)
+
+day = st.selectbox("📅 选择今天的学习进度：", list(course_data.keys()), index=len(list(course_data.keys()))-1)
 words_info = course_data[day]
 
 tab1, tab2 = st.tabs(["📚 学习跟读", "🎮 挑战挑战"])
 
-# --- 1. 学习跟读 ---
+# --- 5. 学习模式 ---
 with tab1:
     for eng, info in words_info.items():
         img_path = f"assets/day{day}/{eng}.png"
@@ -72,7 +102,7 @@ with tab1:
         st.audio(f"https://dict.youdao.com/dictvoice?audio={info['sent'].replace(' ', '%20')}&type=2")
         st.markdown("---")
 
-# --- 2. 挑战模式 (修复图片不显示问题) ---
+# --- 6. 综合挑战模式 ---
 with tab2:
     if 'quiz_mode' not in st.session_state or st.sidebar.button("♻️ 换一组题"):
         st.session_state.quiz_mode = random.choice(["listen", "speak"])
@@ -88,8 +118,6 @@ with tab2:
     if st.session_state.quiz_mode == "listen":
         st.write("### 👂 听声音，选图片")
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
-        
-        # 使用 2x2 布局显示图片
         col1, col2 = st.columns(2)
         for i, opt in enumerate(st.session_state.quiz_options):
             with col1 if i % 2 == 0 else col2:
@@ -98,25 +126,23 @@ with tab2:
                     st.image(o_img, use_column_width=True)
                     if st.button(f"选这个", key=f"sel_{opt}"):
                         if opt == target:
-                            st.success("对啦！🎉")
+                            st.success("灿灿真棒！答对了！🎉")
                             st.balloons()
                             st.session_state.quiz_answered = True
                         else:
-                            st.error("不对哦~")
-                else:
-                    st.warning(f"缺少图片: {opt}")
+                            st.error("再听一遍试试看？")
 
     else:
         st.write("### 🖼️ 看图说词")
-        st.write("大声说出这是什么？")
+        st.write("灿灿，大声说出这是什么？")
         t_img = f"assets/day{day}/{target}.png"
         if os.path.exists(t_img): st.image(t_img, width=300)
         if st.button("检查答案"):
             st.session_state.quiz_answered = True
             
     if st.session_state.get('quiz_answered'):
-        st.info(f"结果是：{target} ({words_info[target]['chi']})")
+        st.info(f"答案是：{target} ({words_info[target]['chi']})")
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
-        if st.button("下一题 ➡️"):
+        if st.button("挑战下一题 ➡️"):
             del st.session_state.quiz_mode
             st.rerun()
