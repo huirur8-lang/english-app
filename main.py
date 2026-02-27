@@ -21,8 +21,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 # 配置
-st.set_page_config(page_title="英语天天练", page_icon="https://raw.githubusercontent.com/huirur8-lang/english-app/main/myapp.jpg")
-st.title("🎒 二年级英语：30天挑战")
+# 把链接后面加上 ?v=888 (这不会影响图片显示，但会骗过浏览器)
+st.set_page_config(
+    page_title="英语天天练", 
+    page_icon="https://raw.githubusercontent.com/huirur8-lang/english-app/main/myapp.jpg?v=888"
+)
 
 # 30天全主题单词数据库
 course_data = {
