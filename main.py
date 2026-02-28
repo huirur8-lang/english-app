@@ -1,6 +1,7 @@
 import streamlit as st
 import random
 import os
+import urllib.parse
 
 # 1. 页面基础配置
 st.set_page_config(page_title="灿灿学英语", page_icon="⭐", layout="centered")
@@ -11,44 +12,15 @@ st.markdown("""
     header, #MainMenu, footer {visibility: hidden;}
     .block-container {padding-top: 1.5rem; max-width: 500px;}
     .stAudio {width: 100%;}
-    
-    /* 标题样式 */
-    .main-title {
-        text-align: center; 
-        color: #FF4B4B; 
-        font-size: 2.2rem; 
-        margin-bottom: 5px;
-    }
-    /* 鼓励语样式 */
-    .slogan {
-        text-align: center; 
-        color: #666; 
-        font-size: 1rem; 
-        margin-bottom: 20px;
-        padding: 0 10px;
-    }
-    
+    .main-title {text-align: center; color: #FF4B4B; font-size: 2.2rem; margin-bottom: 5px;}
+    .slogan {text-align: center; color: #666; font-size: 1rem; margin-bottom: 20px;}
     .word-title {text-align: center; color: #1E1E1E; margin-top: 10px;}
-    .sent-box { 
-        background-color: #FFF4F4; 
-        padding: 15px; 
-        border-radius: 15px; 
-        border: 1px solid #FFCACA; 
-        margin: 10px 0; 
-    }
-    
-    /* 按钮美化 */
-    div.stButton > button {
-        width: 100%; 
-        border-radius: 15px; 
-        font-weight: bold; 
-        height: 3.5em;
-        background-color: #f0f2f6;
-    }
+    .sent-box {background-color: #FFF4F4; padding: 15px; border-radius: 15px; border: 1px solid #FFCACA; margin: 10px 0;}
+    div.stButton > button {width: 100%; border-radius: 15px; font-weight: bold; height: 3.5em; background-color: #f0f2f6;}
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 单词数据库 (包含前三天内容)
+# 3. 单词数据库 (保持不变)
 course_data = {
     "1": {
         "pencil": {"chi": "铅笔", "sent": "I have a pencil."},
@@ -82,7 +54,15 @@ course_data = {
     }
 }
 
-# --- 4. 灿灿专属头部 ---
+# 辅助函数：获取图片路径（处理大小写和后缀）
+def get_img_path(day, word):
+    base_path = f"assets/day{day}/{word}"
+    for ext in [".png", ".jpg", ".PNG", ".JPG"]:
+        if os.path.exists(base_path + ext):
+            return base_path + ext
+    return None
+
+# 4. 头部
 st.markdown("<h1 class='main-title'>🌟 灿灿学英语</h1>", unsafe_allow_html=True)
 st.markdown("<p class='slogan'>每一天的进步，都是灿灿闪闪发光的小勋章！✨</p>", unsafe_allow_html=True)
 
@@ -91,18 +71,23 @@ words_info = course_data[day]
 
 tab1, tab2 = st.tabs(["📚 学习跟读", "🎮 挑战挑战"])
 
-# --- 5. 学习模式 ---
+# 5. 学习模式
 with tab1:
     for eng, info in words_info.items():
-        img_path = f"assets/day{day}/{eng}.png"
-        if os.path.exists(img_path): st.image(img_path, width=280)
+        img = get_img_path(day, eng)
+        if img:
+            st.image(img, width=280)
+        
         st.markdown(f"<h2 class='word-title'>{eng} <small>({info['chi']})</small></h2>", unsafe_allow_html=True)
         st.audio(f"https://dict.youdao.com/dictvoice?audio={eng}&type=2")
+        
         st.markdown(f"<div class='sent-box'><p style='color:#FF4B4B; font-weight:bold;'>📖 句子跟读：</p><p style='font-size:1.2rem;'>{info['sent']}</p></div>", unsafe_allow_html=True)
-        st.audio(f"https://dict.youdao.com/dictvoice?audio={info['sent'].replace(' ', '%20')}&type=2")
+        # 修复音频编码问题
+        encoded_sent = urllib.parse.quote(info['sent'])
+        st.audio(f"https://dict.youdao.com/dictvoice?audio={encoded_sent}&type=2")
         st.markdown("---")
 
-# --- 6. 综合挑战模式 ---
+# 6. 综合挑战模式
 with tab2:
     if 'quiz_mode' not in st.session_state or st.sidebar.button("♻️ 换一组题"):
         st.session_state.quiz_mode = random.choice(["listen", "speak"])
@@ -121,22 +106,24 @@ with tab2:
         col1, col2 = st.columns(2)
         for i, opt in enumerate(st.session_state.quiz_options):
             with col1 if i % 2 == 0 else col2:
-                o_img = f"assets/day{day}/{opt}.png"
-                if os.path.exists(o_img):
-                    st.image(o_img, use_column_width=True)
-                    if st.button(f"选这个", key=f"sel_{opt}"):
-                        if opt == target:
-                            st.success("灿灿真棒！答对了！🎉")
-                            st.balloons()
-                            st.session_state.quiz_answered = True
-                        else:
-                            st.error("再听一遍试试看？")
-
+                o_img = get_img_path(day, opt)
+                if o_img:
+                    st.image(o_img, use_container_width=True)
+                else:
+                    st.button(f"🖼️ 缺少图片: {opt}", disabled=True)
+                
+                if st.button(f"选这个", key=f"sel_{opt}"):
+                    if opt == target:
+                        st.success("灿灿真棒！答对了！🎉")
+                        st.balloons()
+                        st.session_state.quiz_answered = True
+                    else:
+                        st.error("再听一遍试试看？")
     else:
         st.write("### 🖼️ 看图说词")
-        st.write("灿灿，大声说出这是什么？")
-        t_img = f"assets/day{day}/{target}.png"
-        if os.path.exists(t_img): st.image(t_img, width=300)
+        t_img = get_img_path(day, target)
+        if t_img:
+            st.image(t_img, width=300)
         if st.button("检查答案"):
             st.session_state.quiz_answered = True
             
