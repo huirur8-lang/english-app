@@ -89,28 +89,68 @@ with tab1:
 
 # 6. 综合挑战模式
 with tab2:
+    # --- A. 动态构建复习池：包含当前天及之前所有天的单词 ---
+    all_past_words = {}
+    current_day_int = int(day)
+    for d_key, d_words in course_data.items():
+        if int(d_key) <= current_day_int:
+            # 整合单词，并记录它属于哪一天（用于定位图片路径）
+            for w, info in d_words.items():
+                temp_info = info.copy()
+                temp_info['belong_day'] = d_key
+                all_past_words[w] = temp_info
+
+    # --- B. 【修复 KeyError 报错】防崩溃逻辑 ---
+    # 如果切换天数导致缓存里的单词不在现在的单词池中，就强制清除题目状态
+    if 'quiz_target' in st.session_state:
+        if st.session_state.quiz_target not in all_past_words:
+            if 'quiz_mode' in st.session_state:
+                del st.session_state.quiz_mode
+
+    # --- C. 初始化挑战题目 ---
     if 'quiz_mode' not in st.session_state or st.sidebar.button("♻️ 换一组题"):
         st.session_state.quiz_mode = random.choice(["listen", "speak"])
-        st.session_state.quiz_target = random.choice(list(words_info.keys()))
-        opts = random.sample(list(words_info.keys()), 4)
-        if st.session_state.quiz_target not in opts: opts[0] = st.session_state.quiz_target
+        # 从汇总后的“滚雪球”单词池里随机选一个
+        st.session_state.quiz_target = random.choice(list(all_past_words.keys()))
+        
+        # 确保选项数量不超过单词池总数
+        pool_size = min(len(all_past_words), 4)
+        opts = random.sample(list(all_past_words.keys()), pool_size)
+        if st.session_state.quiz_target not in opts:
+            opts[0] = st.session_state.quiz_target
         random.shuffle(opts)
+        
         st.session_state.quiz_options = opts
         st.session_state.quiz_answered = False
 
+    # 获取当前题目信息
     target = st.session_state.quiz_target
+    target_info = all_past_words[target]
+    target_day = target_info['belong_day']
 
+    # --- D. 听音选图模式 ---
     if st.session_state.quiz_mode == "listen":
-        st.write("### 👂 听声音，选图片")
+        st.write(f"### 👂 听声音，选图片 (来自第 {target_day} 课)")
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
+        
         col1, col2 = st.columns(2)
         for i, opt in enumerate(st.session_state.quiz_options):
             with col1 if i % 2 == 0 else col2:
-                o_img = get_img_path(day, opt)
-                if o_img:
-                    st.image(o_img, use_container_width=True)
+                # 核心优化：根据单词原本所属的文件夹查找图片
+                opt_day = all_past_words[opt]['belong_day']
+                
+                # 自动尝试多种图片后缀，解决截图里显示“缺少图片”的问题
+                found_opt_img = None
+                for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG"]:
+                    test_path = f"assets/day{opt_day}/{opt}{ext}"
+                    if os.path.exists(test_path):
+                        found_opt_img = test_path
+                        break
+
+                if found_opt_img:
+                    st.image(found_opt_img, use_container_width=True)
                 else:
-                    st.button(f"🖼️ 缺少图片: {opt}", disabled=True)
+                    st.warning(f"📸 缺少图片: {opt}")
                 
                 if st.button(f"选这个", key=f"sel_{opt}"):
                     if opt == target:
@@ -119,17 +159,33 @@ with tab2:
                         st.session_state.quiz_answered = True
                     else:
                         st.error("再听一遍试试看？")
+
+    # --- E. 看图说词模式 ---
     else:
-        st.write("### 🖼️ 看图说词")
-        t_img = get_img_path(day, target)
-        if t_img:
-            st.image(t_img, width=300)
+        st.write(f"### 🖼️ 看图说词 (来自第 {target_day} 课)")
+        st.write("灿灿，大声说出这是什么？")
+        
+        # 同样进行后缀自动匹配
+        found_target_img = None
+        for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG"]:
+            test_path = f"assets/day{target_day}/{target}{ext}"
+            if os.path.exists(test_path):
+                found_target_img = test_path
+                break
+            
+        if found_target_img:
+            st.image(found_target_img, width=300)
+        else:
+            st.warning(f"📸 缺少图片: {target}")
+            
         if st.button("检查答案"):
             st.session_state.quiz_answered = True
             
+    # --- F. 答题反馈区 ---
     if st.session_state.get('quiz_answered'):
-        st.info(f"答案是：{target} ({words_info[target]['chi']})")
+        st.info(f"答案是：{target} ({target_info['chi']})")
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
         if st.button("挑战下一题 ➡️"):
-            del st.session_state.quiz_mode
+            if 'quiz_mode' in st.session_state:
+                del st.session_state.quiz_mode
             st.rerun()
