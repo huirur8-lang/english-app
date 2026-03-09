@@ -328,24 +328,38 @@ course_data = {
     }
 }
 
-# 5. 增强版搜图函数 (本地优先 -> 网络自动补齐)
+# 5. 增强版搜图函数（本地优先 -> 网络自动补齐 -> 深度优化搜索逻辑）
 @st.cache_data(show_spinner=False)
 def get_smart_image(day, word):
-    # --- 1. 尝试找本地图 ---
+    # --- 1. 尝试找本地图 (妈妈精选永远是第一顺位) ---
     base_path = f"assets/day{day}/{word}"
     for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]:
         full_local_path = base_path + ext
         if os.path.exists(full_local_path):
             return full_local_path
     
-    # --- 2. 本地没图，调用 Pixabay ---
+    # --- 2. 本地没图，调用 Pixabay (优化版策略) ---
     try:
-        query = urllib.parse.quote(f"{word} illustration cartoon")
-        url = f"https://pixabay.com/api/?key={PIXABAY_KEY}&q={query}&image_type=illustration&per_page=3"
+        # 给搜索词加点“料”：限定为白底、卡通、绘本风
+        optimized_query = f"{word} illustration clipart white background"
+        query = urllib.parse.quote(optimized_query)
+        
+        # 增加 safesearch（安全搜索）和 category=education（教育类）
+        url = (f"https://pixabay.com/api/?key={PIXABAY_KEY}"
+               f"&q={query}&image_type=illustration&safesearch=true"
+               f"&category=education&per_page=3")
+        
         response = requests.get(url, timeout=5)
         data = response.json()
-        if data.get('hits'):
+        
+        if data.get('hits') and len(data['hits']) > 0:
             return data['hits'][0]['webformatURL']
+        else:
+            # 如果限定太多搜不到，就退而求其次只搜单词本身
+            backup_url = f"https://pixabay.com/api/?key={PIXABAY_KEY}&q={word}&image_type=illustration&safesearch=true"
+            backup_res = requests.get(backup_url, timeout=5).json()
+            if backup_res.get('hits'):
+                return backup_res['hits'][0]['webformatURL']
     except Exception:
         pass
         
