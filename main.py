@@ -2,6 +2,7 @@ import streamlit as st
 import random
 import os
 import urllib.parse
+import requests
 
 # 1. 页面基础配置
 st.set_page_config(page_title="灿灿学英语", page_icon="⭐", layout="centered")
@@ -20,7 +21,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 核心单词数据库 (30天计划)
+# 3. 核心配置
+PIXABAY_KEY = "54951287-bdeb20bc4e96e911ae09b4601"
+
+# 单词数据库 (保持原样)
 course_data = {
     "1": {
         "pencil": {"chi": "铅笔", "sent": "I have a pencil."},
@@ -324,14 +328,29 @@ course_data = {
     }
 }
 
-# 辅助函数：获取图片路径（增加更多容错性）
-def get_img_path(day, word):
+# 5. 增强版搜图函数 (本地优先 -> 网络自动补齐)
+@st.cache_data(show_spinner=False)
+def get_smart_image(day, word):
+    # --- 1. 尝试找本地图 ---
     base_path = f"assets/day{day}/{word}"
-    # 尝试所有常见的扩展名
     for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]:
-        if os.path.exists(base_path + ext):
-            return base_path + ext
-    return None
+        full_local_path = base_path + ext
+        if os.path.exists(full_local_path):
+            return full_local_path
+    
+    # --- 2. 本地没图，调用 Pixabay ---
+    try:
+        query = urllib.parse.quote(f"{word} illustration cartoon")
+        url = f"https://pixabay.com/api/?key={PIXABAY_KEY}&q={query}&image_type=illustration&per_page=3"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if data.get('hits'):
+            return data['hits'][0]['webformatURL']
+    except Exception:
+        pass
+        
+    # --- 3. 实在不行返回占位图 ---
+    return "https://via.placeholder.com/300x200?text=Learning+English"
 
 # 4. 头部
 st.markdown("<h1 class='main-title'>🌟 灿灿学英语</h1>", unsafe_allow_html=True)
@@ -347,11 +366,9 @@ tab1, tab2 = st.tabs(["📚 学习跟读", "🎮 挑战挑战"])
 # 5. 学习模式
 with tab1:
     for eng, info in words_info.items():
-        img = get_img_path(day, eng)
-        if img:
-            st.image(img, width=280)
-        else:
-            st.info(f"💡 灿灿，快让妈妈在 assets/day{day}/ 文件夹下放一张 {eng} 的图片吧！")
+        # 使用智能搜图
+        img_src = get_smart_image(day, eng)
+        st.image(img_src, width=300)
         
         st.markdown(f"<h2 class='word-title'>{eng} <small>({info['chi']})</small></h2>", unsafe_allow_html=True)
         st.audio(f"https://dict.youdao.com/dictvoice?audio={eng}&type=2")
@@ -361,9 +378,8 @@ with tab1:
         st.audio(f"https://dict.youdao.com/dictvoice?audio={encoded_sent}&type=2")
         st.markdown("---")
 
-# 6. 综合挑战模式 (滚雪球式复习)
+# 6. 综合挑战模式
 with tab2:
-    # A. 动态构建单词池
     all_past_words = {}
     current_day_int = int(day)
     for d_key, d_words in course_data.items():
@@ -373,12 +389,10 @@ with tab2:
                 temp_info['belong_day'] = d_key
                 all_past_words[w] = temp_info
 
-    # B. 防崩溃逻辑
     if 'quiz_target' in st.session_state:
         if st.session_state.quiz_target not in all_past_words:
             if 'quiz_mode' in st.session_state: del st.session_state.quiz_mode
 
-    # C. 初始化题目
     if 'quiz_mode' not in st.session_state or st.sidebar.button("♻️ 换一组题"):
         st.session_state.quiz_mode = random.choice(["listen", "speak"])
         st.session_state.quiz_target = random.choice(list(all_past_words.keys()))
@@ -395,7 +409,6 @@ with tab2:
     target = st.session_state.quiz_target
     target_info = all_past_words[target]
 
-    # D. 听音选图
     if st.session_state.quiz_mode == "listen":
         st.write(f"### 👂 听声音，选图片")
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
@@ -404,12 +417,9 @@ with tab2:
         for i, opt in enumerate(st.session_state.quiz_options):
             with col1 if i % 2 == 0 else col2:
                 opt_day = all_past_words[opt]['belong_day']
-                found_opt_img = get_img_path(opt_day, opt)
-
-                if found_opt_img:
-                    st.image(found_opt_img, use_container_width=True)
-                else:
-                    st.warning(f"📸 缺少图片: {opt}")
+                # 挑战模式也用智能搜图
+                found_opt_img = get_smart_image(opt_day, opt)
+                st.image(found_opt_img, use_container_width=True)
                 
                 if st.button(f"选这个", key=f"sel_{opt}"):
                     if opt == target:
@@ -419,23 +429,18 @@ with tab2:
                     else:
                         st.error("再听一遍试试看？")
 
-    # E. 看图说词
     else:
         st.write(f"### 🖼️ 看图说词")
         st.write("灿灿，大声说出这是什么？")
         
         target_day = target_info['belong_day']
-        found_target_img = get_img_path(target_day, target)
-        
-        if found_target_img:
-            st.image(found_target_img, width=300)
-        else:
-            st.warning(f"📸 缺少图片: {target}")
+        # 智能搜图展示目标
+        found_target_img = get_smart_image(target_day, target)
+        st.image(found_target_img, width=300)
             
         if st.button("检查答案"):
             st.session_state.quiz_answered = True
             
-    # F. 反馈区
     if st.session_state.get('quiz_answered'):
         st.info(f"答案是：{target} ({target_info['chi']})")
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
