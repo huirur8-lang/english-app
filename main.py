@@ -411,37 +411,34 @@ def get_local_image(day, word):
 
 
 # ==========================================
-# 5. 页面头部 & 勋章统计
+# 5. 页面头部 & 学习进度选择 (优化排版)
 # ==========================================
 st.markdown("<h1 class='main-title'>🌟 灿灿学英语</h1>", unsafe_allow_html=True)
 st.markdown("<p class='slogan'>每一天的进步，都是灿灿闪闪发光的小勋章！✨</p>", unsafe_allow_html=True)
 
-# --- 计算“已学单词勋章”逻辑 ---
-all_learned_words_count = 0
-for d_words in course_data.values():
-    all_learned_words_count += len(d_words)
+# 1. 生成日期列表
+day_list = sorted(list(course_data.keys()), key=int)
 
-# --- 在显眼位置显示勋章 ---
+# 2. 先让灿灿选择天数 (确保在最上方，操作方便)
+day = st.selectbox("📅 灿灿，今天我们要学习第几天？", day_list, index=0) 
+
+# 3. 计算勋章逻辑：当前天数 * 8
+current_day_int = int(day)
+all_learned_words_count = current_day_int * 8
+
+# 4. 显示勋章区域
 st.markdown(f"""
 <div class='stats-container'>
-    <div style='font-size: 0.9rem; opacity: 0.9;'>✨ 到今天为止，灿灿已经获得了</div>
-    <div style='font-size: 2.8rem; font-weight: 800; margin: 5px 0;'>{all_learned_words_count}</div>
-    <div style='font-size: 1rem; font-weight: bold;'>枚英语小勋章啦！🎉</div>
+    <div style='font-size: 0.8rem; opacity: 0.9;'>✨ 灿灿超棒！到今天为止你已经获得了</div>
+    <div style='font-size: 2.2rem; font-weight: 800; margin: 5px 0;'>{all_learned_words_count}</div>
+    <div style='font-size: 0.9rem; font-weight: bold;'>枚英语小勋章啦！🎉</div>
 </div>
 """, unsafe_allow_html=True)
 
-
 # ==========================================
-# 6. 进度选择与模式切换
+# 6. 模式切换
 # ==========================================
-# 生成日期列表
-day_list = sorted(list(course_data.keys()), key=int)
-
-# 将进度选择放在侧边栏，保持主界面整洁
-with st.sidebar:
-    st.markdown("### 📅 学习进度")
-    day = st.selectbox("选择今天的课程：", day_list, index=0) # 默认从第1天开始
-
+words_info = course_data[day]
 words_info = course_data[day]
 
 # 使用 Tabs 切换模式
