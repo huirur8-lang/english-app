@@ -1,30 +1,88 @@
 import streamlit as st
 import random
 import os
+import requests # 仅用于有道语音接口
 import urllib.parse
-import requests
 
+# ==========================================
 # 1. 页面基础配置
-st.set_page_config(page_title="灿灿学英语", page_icon="⭐", layout="centered")
+# ==========================================
+st.set_page_config(
+    page_title="灿灿学英语",
+    page_icon="⭐",
+    layout="centered",
+    initial_sidebar_state="collapsed" # 默认收起侧边栏，聚焦内容
+)
 
+# ==========================================
 # 2. 界面美化 CSS
+# ==========================================
 st.markdown("""
     <style>
+    /* 隐藏顶部导航和底部水印 */
     header, #MainMenu, footer {visibility: hidden;}
+    /* 限制内容最大宽度，更像手机 APP */
     .block-container {padding-top: 1.5rem; max-width: 500px;}
-    .stAudio {width: 100%;}
-    .main-title {text-align: center; color: #FF4B4B; font-size: 2.2rem; margin-bottom: 5px;}
-    .slogan {text-align: center; color: #666; font-size: 1rem; margin-bottom: 20px;}
-    .word-title {text-align: center; color: #1E1E1E; margin-top: 10px;}
-    .sent-box {background-color: #FFF4F4; padding: 15px; border-radius: 15px; border: 1px solid #FFCACA; margin: 10px 0;}
-    div.stButton > button {width: 100%; border-radius: 15px; font-weight: bold; height: 3.5em; background-color: #f0f2f6;}
+    
+    /* 音频播放器样式 */
+    .stAudio {width: 100%; margin-bottom: 15px;}
+    
+    /* 标题和口号样式 */
+    .main-title {text-align: center; color: #FF4B4B; font-size: 2.2rem; margin-bottom: 5px; font-weight: 800;}
+    .slogan {text-align: center; color: #666; font-size: 1rem; margin-bottom: 10px;}
+    
+    /* 单词标题样式 */
+    .word-title {text-align: center; color: #1E1E1E; margin-top: 10px; font-size: 2.5rem; font-weight: 800;}
+    
+    /* 句子跟读框样式 */
+    .sent-box {
+        background-color: #FFF4F4;
+        padding: 20px;
+        border-radius: 20px;
+        border: 2px solid #FFCACA;
+        margin: 15px 0;
+        box-shadow: 2px 2px 10px rgba(255,75,75,0.05);
+    }
+    
+    /* 全局按钮样式美化 */
+    div.stButton > button {
+        width: 100%;
+        border-radius: 20px;
+        font-weight: bold;
+        height: 3.8em;
+        background-color: #f0f2f6;
+        border: 2px solid #d1d5db;
+        transition: all 0.3s;
+        font-size: 1.1rem;
+    }
+    div.stButton > button:hover {
+        background-color: #FF4B4B;
+        color: white;
+        border-color: #FF4B4B;
+        transform: scale(1.02);
+    }
+
+    /* 统计勋章区域样式 */
+    .stats-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 15px;
+        border-radius: 20px;
+        color: white;
+        text-align: center;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3);
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. 核心配置
-PIXABAY_KEY = "54951287-bdeb20bc4e96e911ae09b4601"
+# ==========================================
+# 3. 核心配置与【完整】单词数据库
+# ==========================================
 
-# 单词数据库 (保持原样)
+# 占位图地址 (当本地找不到图时显示)
+PLACEHOLDER_IMG = "https://via.placeholder.com/500x350?text=Learning+English+Together"
+
+# 完整的 30 天单词库
 course_data = {
     "1": {
         "pencil": {"chi": "铅笔", "sent": "I have a pencil."},
@@ -328,72 +386,105 @@ course_data = {
     }
 }
 
-# 5. 增强版搜图函数（本地优先 -> 网络自动补齐 -> 深度优化搜索逻辑）
-@st.cache_data(show_spinner=False)
-def get_smart_image(day, word):
-    # --- 1. 尝试找本地图 (妈妈精选永远是第一顺位) ---
+
+# ==========================================
+# 4. 纯本地搜图函数
+# ==========================================
+def get_local_image(day, word):
+    """
+    只在本地 assets/dayX/ 文件夹下查找文件名为 word 的图片。
+    妈妈精选，品质保证。
+    """
+    # 允许的图片后缀
+    valid_extensions = [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]
     base_path = f"assets/day{day}/{word}"
-    for ext in [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]:
+    
+    # 尝试查找本地文件
+    for ext in valid_extensions:
         full_local_path = base_path + ext
         if os.path.exists(full_local_path):
+            # Streamlit 可以直接读取本地路径
             return full_local_path
     
-    # --- 2. 本地没图，调用 Pixabay (优化版策略) ---
-    try:
-        # 给搜索词加点“料”：限定为白底、卡通、绘本风
-        optimized_query = f"{word} illustration clipart white background"
-        query = urllib.parse.quote(optimized_query)
-        
-        # 增加 safesearch（安全搜索）和 category=education（教育类）
-        url = (f"https://pixabay.com/api/?key={PIXABAY_KEY}"
-               f"&q={query}&image_type=illustration&safesearch=true"
-               f"&category=education&per_page=3")
-        
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        
-        if data.get('hits') and len(data['hits']) > 0:
-            return data['hits'][0]['webformatURL']
-        else:
-            # 如果限定太多搜不到，就退而求其次只搜单词本身
-            backup_url = f"https://pixabay.com/api/?key={PIXABAY_KEY}&q={word}&image_type=illustration&safesearch=true"
-            backup_res = requests.get(backup_url, timeout=5).json()
-            if backup_res.get('hits'):
-                return backup_res['hits'][0]['webformatURL']
-    except Exception:
-        pass
-        
-    # --- 3. 实在不行返回占位图 ---
-    return "https://via.placeholder.com/300x200?text=Learning+English"
+    # 如果找不到，返回占位图
+    return PLACEHOLDER_IMG
 
-# 4. 头部
+
+# ==========================================
+# 5. 页面头部 & 勋章统计
+# ==========================================
 st.markdown("<h1 class='main-title'>🌟 灿灿学英语</h1>", unsafe_allow_html=True)
 st.markdown("<p class='slogan'>每一天的进步，都是灿灿闪闪发光的小勋章！✨</p>", unsafe_allow_html=True)
 
+# --- 计算“已学单词勋章”逻辑 ---
+all_learned_words_count = 0
+for d_words in course_data.values():
+    all_learned_words_count += len(d_words)
+
+# --- 在显眼位置显示勋章 ---
+st.markdown(f"""
+<div class='stats-container'>
+    <div style='font-size: 0.9rem; opacity: 0.9;'>✨ 到今天为止，灿灿已经获得了</div>
+    <div style='font-size: 2.8rem; font-weight: 800; margin: 5px 0;'>{all_learned_words_count}</div>
+    <div style='font-size: 1rem; font-weight: bold;'>枚英语小勋章啦！🎉</div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ==========================================
+# 6. 进度选择与模式切换
+# ==========================================
 # 生成日期列表
 day_list = sorted(list(course_data.keys()), key=int)
-day = st.selectbox("📅 选择今天的学习进度：", day_list, index=len(day_list)-1)
+
+# 将进度选择放在侧边栏，保持主界面整洁
+with st.sidebar:
+    st.markdown("### 📅 学习进度")
+    day = st.selectbox("选择今天的课程：", day_list, index=0) # 默认从第1天开始
+
 words_info = course_data[day]
 
-tab1, tab2 = st.tabs(["📚 学习跟读", "🎮 挑战挑战"])
+# 使用 Tabs 切换模式
+tab1, tab2 = st.tabs(["📚 学习跟读", "🎮 综合挑战"])
 
-# 5. 学习模式
+
+# ==========================================
+# 7. 学习模式 (Tab 1)
+# ==========================================
 with tab1:
     for eng, info in words_info.items():
-        # 使用智能搜图
-        img_src = get_smart_image(day, eng)
-        st.image(img_src, width=300)
+        # --- 修改：只使用本地搜图 ---
+        img_src = get_local_image(day, eng)
         
-        st.markdown(f"<h2 class='word-title'>{eng} <small>({info['chi']})</small></h2>", unsafe_allow_html=True)
+        # 展示图片，加宽一点
+        st.image(img_src, use_container_width=True)
+        
+        # 展示单词和翻译
+        st.markdown(f"<h2 class='word-title'>{eng}</h2><p style='text-align:center; color:#666; font-size:1.2rem; margin-top:-10px;'>({info['chi']})</p>", unsafe_allow_html=True)
+        
+        # 单词读音
         st.audio(f"https://dict.youdao.com/dictvoice?audio={eng}&type=2")
         
-        st.markdown(f"<div class='sent-box'><p style='color:#FF4B4B; font-weight:bold;'>📖 句子跟读：</p><p style='font-size:1.2rem;'>{info['sent']}</p></div>", unsafe_allow_html=True)
+        # 句子跟读
+        st.markdown(f"<div class='sent-box'><p style='color:#FF4B4B; font-weight:bold; margin-bottom:5px;'>📖 句子跟读：</p><p style='font-size:1.3rem; line-height:1.4;'>{info['sent']}</p></div>", unsafe_allow_html=True)
+        
+        # 句子读音 (需要编码 URL)
         encoded_sent = urllib.parse.quote(info['sent'])
         st.audio(f"https://dict.youdao.com/dictvoice?audio={encoded_sent}&type=2")
-        st.markdown("---")
+        
+        # 分割线
+        st.markdown("<br><hr style='border:1px dashed #FFCACA;'><br>", unsafe_allow_html=True)
 
-# 6. 综合挑战模式
+
+# ==========================================
+# 8. 综合挑战模式 (Tab 2)
+# ==========================================
 with tab2:
+    st.markdown("### 🏆 看看灿灿记住了多少？")
+    st.write("这里会随机抽取今天和以前学过的单词来挑战哦！")
+    st.markdown("---")
+
+    # 1. 构建适合当前进度的“已学单词库”
     all_past_words = {}
     current_day_int = int(day)
     for d_key, d_words in course_data.items():
@@ -403,16 +494,27 @@ with tab2:
                 temp_info['belong_day'] = d_key
                 all_past_words[w] = temp_info
 
+    # 如果库是空的（比如第1天），加个保护
+    if not all_past_words:
+        st.warning("灿灿，先去『学习跟读』模式学几个单词再来挑战吧！💪")
+        st.stop()
+
+    # 2. 初始化 Session State (题目缓存)
     if 'quiz_target' in st.session_state:
         if st.session_state.quiz_target not in all_past_words:
             if 'quiz_mode' in st.session_state: del st.session_state.quiz_mode
 
     if 'quiz_mode' not in st.session_state or st.sidebar.button("♻️ 换一组题"):
+        # 随机题目模式：听声音选图 vs 看图说词
         st.session_state.quiz_mode = random.choice(["listen", "speak"])
+        
+        # 随机目标单词
         st.session_state.quiz_target = random.choice(list(all_past_words.keys()))
         
+        # 生成干扰项 (共4个选项)
         pool_size = min(len(all_past_words), 4)
         opts = random.sample(list(all_past_words.keys()), pool_size)
+        # 确保目标单词在选项中
         if st.session_state.quiz_target not in opts:
             opts[0] = st.session_state.quiz_target
         random.shuffle(opts)
@@ -420,44 +522,68 @@ with tab2:
         st.session_state.quiz_options = opts
         st.session_state.quiz_answered = False
 
+
     target = st.session_state.quiz_target
     target_info = all_past_words[target]
 
+
+    # --- 挑战模式 A: 听声音，选图片 ---
     if st.session_state.quiz_mode == "listen":
-        st.write(f"### 👂 听声音，选图片")
-        st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
+        st.markdown(f"#### 👂 第一关：听声音，选图片")
+        st.write("点击小喇叭，听听看是哪个单词，然后选出正确的图片：")
         
+        # 播放目标单词声音
+        col_audio, _ = st.columns([1, 2])
+        with col_audio:
+            st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # 展示4张图片供选择
         col1, col2 = st.columns(2)
         for i, opt in enumerate(st.session_state.quiz_options):
             with col1 if i % 2 == 0 else col2:
                 opt_day = all_past_words[opt]['belong_day']
-                # 挑战模式也用智能搜图
-                found_opt_img = get_smart_image(opt_day, opt)
+                # --- 修改：只使用本地搜图 ---
+                found_opt_img = get_local_image(opt_day, opt)
                 st.image(found_opt_img, use_container_width=True)
                 
+                # 选项按钮
                 if st.button(f"选这个", key=f"sel_{opt}"):
                     if opt == target:
                         st.success("灿灿真棒！答对了！🎉")
                         st.balloons()
                         st.session_state.quiz_answered = True
                     else:
-                        st.error("再听一遍试试看？")
+                        st.error("哎呀，选错了，再听一遍试试看？")
 
+
+    # --- 挑战模式 B: 看图说词 ---
     else:
-        st.write(f"### 🖼️ 看图说词")
-        st.write("灿灿，大声说出这是什么？")
+        st.markdown(f"#### 🖼️ 第二关：看图说词")
+        st.write("灿灿，大声说出这是什么？（说完点击检查答案）")
+        st.markdown("<br>", unsafe_allow_html=True)
         
         target_day = target_info['belong_day']
-        # 智能搜图展示目标
-        found_target_img = get_smart_image(target_day, target)
-        st.image(found_target_img, width=300)
+        # --- 修改：只使用本地搜图展示目标 ---
+        found_target_img = get_local_image(target_day, target)
+        st.image(found_target_img, use_container_width=True)
             
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # 检查答案按钮
         if st.button("检查答案"):
             st.session_state.quiz_answered = True
             
+    # 3. 答题完成后的展示
     if st.session_state.get('quiz_answered'):
-        st.info(f"答案是：{target} ({target_info['chi']})")
+        st.markdown("---")
+        st.markdown(f"**答案是：** <span style='font-size:1.5rem; color:#FF4B4B; font-weight:bold;'>{target}</span> ({target_info['chi']})", unsafe_allow_html=True)
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
+        st.write(f"📖 句子：{target_info['sent']}")
+        
+        # 挑战下一题
         if st.button("挑战下一题 ➡️"):
+            # 清除 Session State，强制重新生成题目
             if 'quiz_mode' in st.session_state: del st.session_state.quiz_mode
             st.rerun()
