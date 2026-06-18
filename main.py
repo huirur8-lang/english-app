@@ -397,7 +397,8 @@ def get_local_image(day, word):
     """
     # 允许的图片后缀
     valid_extensions = [".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"]
-    base_path = f"assets/day{day}/{word}"
+    safe_word = word.replace(" ", "_")
+    base_path = f"assets/day{day}/{safe_word}"
     
     # 尝试查找本地文件
     for ext in valid_extensions:
@@ -411,8 +412,51 @@ def get_local_image(day, word):
 
 
 # ==========================================
-# 5. 页面头部 & 学习进度选择 (优化排版)
+# 5. 学习记录与错词本工具
 # ==========================================
+def init_learning_state():
+    if "learned_words" not in st.session_state:
+        st.session_state.learned_words = {}
+    if "weak_words" not in st.session_state:
+        st.session_state.weak_words = {}
+    if "challenge_correct_count" not in st.session_state:
+        st.session_state.challenge_correct_count = 0
+
+
+def make_word_key(day, word):
+    return f"day{day}:{word}"
+
+
+def mark_word_learned(day, word):
+    st.session_state.learned_words[make_word_key(day, word)] = True
+
+
+def add_weak_word(day, word, info):
+    st.session_state.weak_words[make_word_key(day, word)] = {
+        "day": day,
+        "word": word,
+        "chi": info["chi"],
+        "sent": info["sent"],
+    }
+
+
+def remove_weak_word(word_key):
+    if word_key in st.session_state.weak_words:
+        del st.session_state.weak_words[word_key]
+
+
+def count_learned_words(day, words):
+    return sum(
+        1 for word in words
+        if st.session_state.learned_words.get(make_word_key(day, word))
+    )
+
+
+# ==========================================
+# 6. 页面头部 & 学习进度选择 (优化排版)
+# ==========================================
+init_learning_state()
+
 st.markdown("<h1 class='main-title'>🌟 灿灿学英语</h1>", unsafe_allow_html=True)
 st.markdown("<p class='slogan'>每一天的进步，都是灿灿闪闪发光的小勋章！✨</p>", unsafe_allow_html=True)
 
@@ -436,17 +480,35 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 6. 模式切换
+# 7. 今日学习任务卡片
 # ==========================================
 words_info = course_data[day]
-words_info = course_data[day]
+today_done_count = count_learned_words(day, words_info.keys())
+today_total_count = len(words_info)
+weak_count = len(st.session_state.weak_words)
+
+st.progress(today_done_count / today_total_count)
+st.markdown(f"""
+<div style='background:#FFF7E8; border:1px solid #FFE0A6; border-radius:18px; padding:14px; margin-bottom:18px;'>
+    <div style='font-weight:800; color:#B45309; margin-bottom:6px;'>📌 今日小任务</div>
+    <div style='color:#444; line-height:1.7;'>
+        已会读：<b>{today_done_count}/{today_total_count}</b> 个　
+        挑战答对：<b>{st.session_state.challenge_correct_count}</b> 次　
+        错词本：<b>{weak_count}</b> 个
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 8. 模式切换
+# ==========================================
 
 # 使用 Tabs 切换模式
-tab1, tab2 = st.tabs(["📚 学习跟读", "🎮 综合挑战"])
+tab1, tab2, tab3 = st.tabs(["📚 学习跟读", "🎮 综合挑战", "📒 错词本"])
 
 
 # ==========================================
-# 7. 学习模式 (Tab 1)
+# 9. 学习模式 (Tab 1)
 # ==========================================
 with tab1:
     for eng, info in words_info.items():
@@ -454,7 +516,7 @@ with tab1:
         img_src = get_local_image(day, eng)
         
         # 展示图片，加宽一点
-        st.image(img_src, use_container_width=True)
+        st.image(img_src, width="stretch")
         
         # 展示单词和翻译
         st.markdown(f"<h2 class='word-title'>{eng}</h2><p style='text-align:center; color:#666; font-size:1.2rem; margin-top:-10px;'>({info['chi']})</p>", unsafe_allow_html=True)
@@ -468,13 +530,27 @@ with tab1:
         # 句子读音 (需要编码 URL)
         encoded_sent = urllib.parse.quote(info['sent'])
         st.audio(f"https://dict.youdao.com/dictvoice?audio={encoded_sent}&type=2")
+
+        learned_key = make_word_key(day, eng)
+        already_learned = st.session_state.learned_words.get(learned_key, False)
+        col_done, col_weak = st.columns(2)
+        with col_done:
+            done_label = "✅ 已会读" if already_learned else "我会读了 ✅"
+            if st.button(done_label, key=f"learned_{day}_{eng}", disabled=already_learned):
+                mark_word_learned(day, eng)
+                st.success("太棒啦，今天又掌握了一个单词！")
+                st.rerun()
+        with col_weak:
+            if st.button("加入错词本 ⭐", key=f"weak_{day}_{eng}"):
+                add_weak_word(day, eng, info)
+                st.rerun()
         
         # 分割线
         st.markdown("<br><hr style='border:1px dashed #FFCACA;'><br>", unsafe_allow_html=True)
 
 
 # ==========================================
-# 8. 综合挑战模式 (Tab 2)
+# 10. 综合挑战模式 (Tab 2)
 # ==========================================
 with tab2:
     st.markdown("### 🏆 看看灿灿记住了多少？")
@@ -543,7 +619,7 @@ with tab2:
                 opt_day = all_past_words[opt]['belong_day']
                 # --- 修改：只使用本地搜图 ---
                 found_opt_img = get_local_image(opt_day, opt)
-                st.image(found_opt_img, use_container_width=True)
+                st.image(found_opt_img, width="stretch")
                 
                 # 选项按钮
                 if st.button(f"选这个", key=f"sel_{opt}"):
@@ -551,8 +627,10 @@ with tab2:
                         st.success("灿灿真棒！答对了！🎉")
                         st.balloons()
                         st.session_state.quiz_answered = True
+                        st.session_state.challenge_correct_count += 1
                     else:
                         st.error("哎呀，选错了，再听一遍试试看？")
+                        add_weak_word(target_info['belong_day'], target, target_info)
 
 
     # --- 挑战模式 B: 看图说词 ---
@@ -564,7 +642,7 @@ with tab2:
         target_day = target_info['belong_day']
         # --- 修改：只使用本地搜图展示目标 ---
         found_target_img = get_local_image(target_day, target)
-        st.image(found_target_img, use_container_width=True)
+        st.image(found_target_img, width="stretch")
             
         st.markdown("<br>", unsafe_allow_html=True)
         
@@ -578,9 +656,54 @@ with tab2:
         st.markdown(f"**答案是：** <span style='font-size:1.5rem; color:#FF4B4B; font-weight:bold;'>{target}</span> ({target_info['chi']})", unsafe_allow_html=True)
         st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
         st.write(f"📖 句子：{target_info['sent']}")
+
+        col_right, col_try = st.columns(2)
+        with col_right:
+            if st.button("我说对了 ✅", key="speak_right"):
+                st.session_state.challenge_correct_count += 1
+                mark_word_learned(target_info['belong_day'], target)
+                st.success("记录成功，又拿下一题！")
+                st.rerun()
+        with col_try:
+            if st.button("还不熟，加入错词本 ⭐", key="speak_weak"):
+                add_weak_word(target_info['belong_day'], target, target_info)
+                st.rerun()
         
         # 挑战下一题
         if st.button("挑战下一题 ➡️"):
             # 清除 Session State，强制重新生成题目
             if 'quiz_mode' in st.session_state: del st.session_state.quiz_mode
             st.rerun()
+
+
+# ==========================================
+# 11. 错词本 (Tab 3)
+# ==========================================
+with tab3:
+    st.markdown("### 📒 灿灿的错词本")
+    st.write("这里会收集挑战答错、或者手动标记还不熟的单词。")
+    st.markdown("---")
+
+    if not st.session_state.weak_words:
+        st.success("现在错词本是空的，说明今天状态很棒！")
+    else:
+        for weak_key, weak_info in list(st.session_state.weak_words.items()):
+            st.markdown(
+                f"#### {weak_info['word']} "
+                f"<span style='color:#777; font-size:1rem;'>({weak_info['chi']}) · 第 {weak_info['day']} 天</span>",
+                unsafe_allow_html=True
+            )
+            st.image(get_local_image(weak_info["day"], weak_info["word"]), width="stretch")
+            st.audio(f"https://dict.youdao.com/dictvoice?audio={weak_info['word']}&type=2")
+            st.write(f"📖 {weak_info['sent']}")
+
+            col_mastered, col_keep = st.columns(2)
+            with col_mastered:
+                if st.button("已经掌握，移出错词本 ✅", key=f"remove_{weak_key}"):
+                    mark_word_learned(weak_info["day"], weak_info["word"])
+                    remove_weak_word(weak_key)
+                    st.rerun()
+            with col_keep:
+                st.button("继续复习 💪", key=f"keep_{weak_key}", disabled=True)
+
+            st.markdown("<hr style='border:1px dashed #FFE0A6;'>", unsafe_allow_html=True)
