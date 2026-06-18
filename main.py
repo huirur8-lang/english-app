@@ -412,31 +412,95 @@ def get_local_image(day, word):
 
 
 # ==========================================
-# 5. 学习记录与错词本工具
+# 5. 课程、进度与错词本工具
 # ==========================================
+LESSON_SIZE = 6
+DAY_THEMES = {
+    "1": "文具", "2": "身体", "3": "颜色", "4": "农场动物", "5": "野生动物",
+    "6": "水果", "7": "食物饮品", "8": "蔬菜", "9": "数字", "10": "数字",
+    "11": "家人", "12": "我的家", "13": "餐具厨房", "14": "衣服",
+    "15": "天气", "16": "自然", "17": "动作", "18": "兴趣动作",
+    "19": "心情", "20": "形状大小", "21": "方位", "22": "交通",
+    "23": "职业", "24": "运动", "25": "地点", "26": "时间",
+    "27": "感官", "28": "描述", "29": "描述", "30": "小动物",
+}
+
+
+def build_lessons():
+    words = []
+    for day_key in sorted(course_data.keys(), key=int):
+        for word, info in course_data[day_key].items():
+            words.append({
+                "word": word,
+                "chi": info["chi"],
+                "sent": info["sent"],
+                "image_day": day_key,
+                "source_day": day_key,
+                "theme": DAY_THEMES.get(day_key, "生活英语"),
+            })
+
+    lessons = []
+    for index in range(0, len(words), LESSON_SIZE):
+        lesson_words = words[index:index + LESSON_SIZE]
+        lesson_id = len(lessons) + 1
+        theme = lesson_words[0]["theme"]
+        lessons.append({
+            "id": lesson_id,
+            "title": f"第 {lesson_id} 课 · {theme}",
+            "theme": theme,
+            "words": lesson_words,
+        })
+    return lessons
+
+
+lessons = build_lessons()
+lesson_lookup = {lesson["id"]: lesson for lesson in lessons}
+
+
 def init_learning_state():
+    if "app_mode" not in st.session_state:
+        st.session_state.app_mode = "孩子模式"
+    if "current_lesson_id" not in st.session_state:
+        st.session_state.current_lesson_id = 1
+    if "current_step" not in st.session_state:
+        st.session_state.current_step = 0
     if "learned_words" not in st.session_state:
         st.session_state.learned_words = {}
     if "weak_words" not in st.session_state:
         st.session_state.weak_words = {}
     if "challenge_correct_count" not in st.session_state:
         st.session_state.challenge_correct_count = 0
+    if "completed_lessons" not in st.session_state:
+        st.session_state.completed_lessons = {}
+    if "total_checkins" not in st.session_state:
+        st.session_state.total_checkins = 0
+    if "quiz_mode" not in st.session_state:
+        st.session_state.quiz_mode = None
 
 
-def make_word_key(day, word):
-    return f"day{day}:{word}"
+def clamp_lesson_id(lesson_id):
+    return max(1, min(int(lesson_id), len(lessons)))
 
 
-def mark_word_learned(day, word):
-    st.session_state.learned_words[make_word_key(day, word)] = True
+def get_lesson(lesson_id):
+    return lesson_lookup[clamp_lesson_id(lesson_id)]
 
 
-def add_weak_word(day, word, info):
-    st.session_state.weak_words[make_word_key(day, word)] = {
-        "day": day,
-        "word": word,
-        "chi": info["chi"],
-        "sent": info["sent"],
+def make_word_key(lesson_id, word):
+    return f"lesson{lesson_id}:{word}"
+
+
+def mark_word_learned(lesson_id, word):
+    st.session_state.learned_words[make_word_key(lesson_id, word)] = True
+
+
+def add_weak_word(lesson_id, word_info):
+    st.session_state.weak_words[make_word_key(lesson_id, word_info["word"])] = {
+        "lesson_id": lesson_id,
+        "word": word_info["word"],
+        "chi": word_info["chi"],
+        "sent": word_info["sent"],
+        "image_day": word_info["image_day"],
     }
 
 
@@ -445,265 +509,304 @@ def remove_weak_word(word_key):
         del st.session_state.weak_words[word_key]
 
 
-def count_learned_words(day, words):
+def count_lesson_learned(lesson):
     return sum(
-        1 for word in words
-        if st.session_state.learned_words.get(make_word_key(day, word))
+        1 for item in lesson["words"]
+        if st.session_state.learned_words.get(make_word_key(lesson["id"], item["word"]))
     )
 
 
+def is_lesson_ready_for_checkin(lesson):
+    return count_lesson_learned(lesson) == len(lesson["words"])
+
+
+def is_lesson_checked_in(lesson_id):
+    return str(lesson_id) in st.session_state.completed_lessons
+
+
+def checkin_lesson(lesson):
+    lesson_id = lesson["id"]
+    if not is_lesson_checked_in(lesson_id):
+        st.session_state.completed_lessons[str(lesson_id)] = True
+        st.session_state.total_checkins += 1
+    if lesson_id < len(lessons):
+        st.session_state.current_lesson_id = lesson_id + 1
+        st.session_state.current_step = 0
+    st.session_state.quiz_mode = None
+
+
+def get_challenge_pool(current_lesson):
+    pool = []
+    max_lesson_id = current_lesson["id"]
+    for lesson in lessons:
+        if lesson["id"] <= max_lesson_id:
+            for item in lesson["words"]:
+                pool.append({**item, "lesson_id": lesson["id"]})
+    return pool
+
+
+def reset_quiz():
+    for key in ["quiz_mode", "quiz_target", "quiz_options", "quiz_answered"]:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+def render_word_card(lesson, item, show_actions=True):
+    st.image(get_local_image(item["image_day"], item["word"]), width="stretch")
+    st.markdown(
+        f"<h2 class='word-title'>{item['word']}</h2>"
+        f"<p style='text-align:center; color:#666; font-size:1.2rem; margin-top:-10px;'>({item['chi']})</p>",
+        unsafe_allow_html=True
+    )
+    st.audio(f"https://dict.youdao.com/dictvoice?audio={item['word']}&type=2")
+    st.markdown(
+        f"<div class='sent-box'><p style='color:#FF4B4B; font-weight:bold; margin-bottom:5px;'>📖 句子跟读：</p>"
+        f"<p style='font-size:1.3rem; line-height:1.4;'>{item['sent']}</p></div>",
+        unsafe_allow_html=True
+    )
+    encoded_sent = urllib.parse.quote(item["sent"])
+    st.audio(f"https://dict.youdao.com/dictvoice?audio={encoded_sent}&type=2")
+
+    if show_actions:
+        learned = st.session_state.learned_words.get(make_word_key(lesson["id"], item["word"]), False)
+        done_label = "✅ 已会读，下一关" if learned else "我会读了 ✅"
+        if st.button(done_label, key=f"kid_done_{lesson['id']}_{item['word']}"):
+            mark_word_learned(lesson["id"], item["word"])
+            if st.session_state.current_step < len(lesson["words"]) - 1:
+                st.session_state.current_step += 1
+            st.rerun()
+
+        if st.button("还不熟，加入错词本 ⭐", key=f"kid_weak_{lesson['id']}_{item['word']}"):
+            add_weak_word(lesson["id"], item)
+            st.rerun()
+
+
+def render_challenge(lesson):
+    if not is_lesson_ready_for_checkin(lesson):
+        st.info("完成本课 6 个单词后，综合挑战就会开放。")
+        return
+
+    pool = get_challenge_pool(lesson)
+    if not pool:
+        st.warning("先完成几个单词，再来挑战吧。")
+        return
+
+    if "quiz_target" not in st.session_state or st.session_state.get("quiz_mode") is None:
+        st.session_state.quiz_mode = random.choice(["listen", "speak"])
+        st.session_state.quiz_target = random.choice(pool)
+        option_count = min(len(pool), 4)
+        options = random.sample(pool, option_count)
+        target_key = (st.session_state.quiz_target["lesson_id"], st.session_state.quiz_target["word"])
+        option_keys = [(item["lesson_id"], item["word"]) for item in options]
+        if target_key not in option_keys:
+            options[0] = st.session_state.quiz_target
+        random.shuffle(options)
+        st.session_state.quiz_options = options
+        st.session_state.quiz_answered = False
+
+    target = st.session_state.quiz_target
+    st.markdown("### 🎮 综合挑战")
+
+    if st.session_state.quiz_mode == "listen":
+        st.markdown("#### 👂 听声音，选图片")
+        st.audio(f"https://dict.youdao.com/dictvoice?audio={target['word']}&type=2")
+        col1, col2 = st.columns(2)
+        for i, opt in enumerate(st.session_state.quiz_options):
+            with col1 if i % 2 == 0 else col2:
+                st.image(get_local_image(opt["image_day"], opt["word"]), width="stretch")
+                if st.button("选这个", key=f"quiz_{opt['lesson_id']}_{opt['word']}"):
+                    if opt["word"] == target["word"] and opt["lesson_id"] == target["lesson_id"]:
+                        st.success("灿灿真棒！答对了！")
+                        st.balloons()
+                        st.session_state.challenge_correct_count += 1
+                        st.session_state.quiz_answered = True
+                    else:
+                        st.error("哎呀，选错了，再听一遍试试看？")
+                        add_weak_word(target["lesson_id"], target)
+    else:
+        st.markdown("#### 🖼️ 看图说词")
+        st.write("大声说出这是什么，说完再检查答案。")
+        st.image(get_local_image(target["image_day"], target["word"]), width="stretch")
+        if st.button("检查答案"):
+            st.session_state.quiz_answered = True
+
+    if st.session_state.get("quiz_answered"):
+        st.markdown("---")
+        st.markdown(
+            f"**答案是：** <span style='font-size:1.5rem; color:#FF4B4B; font-weight:bold;'>{target['word']}</span> ({target['chi']})",
+            unsafe_allow_html=True
+        )
+        st.audio(f"https://dict.youdao.com/dictvoice?audio={target['word']}&type=2")
+        st.write(f"📖 句子：{target['sent']}")
+
+        col_right, col_weak = st.columns(2)
+        with col_right:
+            if st.button("我说对了 ✅", key="quiz_right"):
+                st.session_state.challenge_correct_count += 1
+                mark_word_learned(target["lesson_id"], target["word"])
+                reset_quiz()
+                st.rerun()
+        with col_weak:
+            if st.button("还不熟，加入错词本 ⭐", key="quiz_weak"):
+                add_weak_word(target["lesson_id"], target)
+                st.rerun()
+
+        if st.button("挑战下一题 ➡️"):
+            reset_quiz()
+            st.rerun()
+
+
 # ==========================================
-# 6. 页面头部 & 学习进度选择 (优化排版)
+# 6. 页面头部
 # ==========================================
 init_learning_state()
+st.session_state.current_lesson_id = clamp_lesson_id(st.session_state.current_lesson_id)
+current_lesson = get_lesson(st.session_state.current_lesson_id)
+st.session_state.current_step = max(0, min(st.session_state.current_step, len(current_lesson["words"]) - 1))
 
 st.markdown("<h1 class='main-title'>🌟 灿灿学英语</h1>", unsafe_allow_html=True)
-st.markdown("<p class='slogan'>每一天的进步，都是灿灿闪闪发光的小勋章！✨</p>", unsafe_allow_html=True)
+st.markdown("<p class='slogan'>每天一小课，英语慢慢发芽！✨</p>", unsafe_allow_html=True)
 
-# 1. 生成日期列表
-day_list = sorted(list(course_data.keys()), key=int)
+mode = st.radio(
+    "选择模式",
+    ["孩子模式", "家长模式"],
+    horizontal=True,
+    index=0 if st.session_state.app_mode == "孩子模式" else 1,
+    label_visibility="collapsed"
+)
+st.session_state.app_mode = mode
 
-# 2. 先让灿灿选择天数 (确保在最上方，操作方便)
-day = st.selectbox("📅 灿灿，今天我们要学习第几天？", day_list, index=0) 
+learned_count = count_lesson_learned(current_lesson)
+lesson_total = len(current_lesson["words"])
+weak_count = len(st.session_state.weak_words)
+checked_in_count = len(st.session_state.completed_lessons)
 
-# 3. 计算勋章逻辑：当前天数 * 8
-current_day_int = int(day)
-all_learned_words_count = current_day_int * 8
-
-# 4. 显示勋章区域
 st.markdown(f"""
 <div class='stats-container'>
-    <div style='font-size: 0.8rem; opacity: 0.9;'>✨ 灿灿超棒！到今天为止你已经获得了</div>
-    <div style='font-size: 2.2rem; font-weight: 800; margin: 5px 0;'>{all_learned_words_count}</div>
-    <div style='font-size: 0.9rem; font-weight: bold;'>枚英语小勋章啦！🎉</div>
+    <div style='font-size: 0.8rem; opacity: 0.9;'>✨ 灿灿已经完成</div>
+    <div style='font-size: 2.2rem; font-weight: 800; margin: 5px 0;'>{checked_in_count}</div>
+    <div style='font-size: 0.9rem; font-weight: bold;'>课学习小勋章啦！🎉</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 7. 今日学习任务卡片
-# ==========================================
-words_info = course_data[day]
-today_done_count = count_learned_words(day, words_info.keys())
-today_total_count = len(words_info)
-weak_count = len(st.session_state.weak_words)
-
-st.progress(today_done_count / today_total_count)
+st.progress(learned_count / lesson_total)
 st.markdown(f"""
 <div style='background:#FFF7E8; border:1px solid #FFE0A6; border-radius:18px; padding:14px; margin-bottom:18px;'>
-    <div style='font-weight:800; color:#B45309; margin-bottom:6px;'>📌 今日小任务</div>
+    <div style='font-weight:800; color:#B45309; margin-bottom:6px;'>📌 当前学习</div>
     <div style='color:#444; line-height:1.7;'>
-        已会读：<b>{today_done_count}/{today_total_count}</b> 个　
+        <b>{current_lesson['title']}</b><br>
+        已会读：<b>{learned_count}/{lesson_total}</b> 个　
         挑战答对：<b>{st.session_state.challenge_correct_count}</b> 次　
         错词本：<b>{weak_count}</b> 个
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 8. 模式切换
-# ==========================================
-
-# 使用 Tabs 切换模式
-tab1, tab2, tab3 = st.tabs(["📚 学习跟读", "🎮 综合挑战", "📒 错词本"])
-
 
 # ==========================================
-# 9. 学习模式 (Tab 1)
+# 7. 孩子模式
 # ==========================================
-with tab1:
-    for eng, info in words_info.items():
-        # --- 修改：只使用本地搜图 ---
-        img_src = get_local_image(day, eng)
-        
-        # 展示图片，加宽一点
-        st.image(img_src, width="stretch")
-        
-        # 展示单词和翻译
-        st.markdown(f"<h2 class='word-title'>{eng}</h2><p style='text-align:center; color:#666; font-size:1.2rem; margin-top:-10px;'>({info['chi']})</p>", unsafe_allow_html=True)
-        
-        # 单词读音
-        st.audio(f"https://dict.youdao.com/dictvoice?audio={eng}&type=2")
-        
-        # 句子跟读
-        st.markdown(f"<div class='sent-box'><p style='color:#FF4B4B; font-weight:bold; margin-bottom:5px;'>📖 句子跟读：</p><p style='font-size:1.3rem; line-height:1.4;'>{info['sent']}</p></div>", unsafe_allow_html=True)
-        
-        # 句子读音 (需要编码 URL)
-        encoded_sent = urllib.parse.quote(info['sent'])
-        st.audio(f"https://dict.youdao.com/dictvoice?audio={encoded_sent}&type=2")
+if st.session_state.app_mode == "孩子模式":
+    tab_learn, tab_challenge, tab_weak = st.tabs(["🚀 今日闯关", "🎮 综合挑战", "📒 错词本"])
 
-        learned_key = make_word_key(day, eng)
-        already_learned = st.session_state.learned_words.get(learned_key, False)
-        col_done, col_weak = st.columns(2)
-        with col_done:
-            done_label = "✅ 已会读" if already_learned else "我会读了 ✅"
-            if st.button(done_label, key=f"learned_{day}_{eng}", disabled=already_learned):
-                mark_word_learned(day, eng)
-                st.success("太棒啦，今天又掌握了一个单词！")
-                st.rerun()
-        with col_weak:
-            if st.button("加入错词本 ⭐", key=f"weak_{day}_{eng}"):
-                add_weak_word(day, eng, info)
-                st.rerun()
-        
-        # 分割线
-        st.markdown("<br><hr style='border:1px dashed #FFCACA;'><br>", unsafe_allow_html=True)
+    with tab_learn:
+        if is_lesson_ready_for_checkin(current_lesson):
+            st.success("本课 6 个单词都完成啦！")
+            if is_lesson_checked_in(current_lesson["id"]):
+                st.info("这课已经打过卡，可以去综合挑战玩一玩。")
+            else:
+                if st.button("完成本课，领取小勋章 🏅"):
+                    checkin_lesson(current_lesson)
+                    st.balloons()
+                    st.rerun()
+        else:
+            step = st.session_state.current_step
+            item = current_lesson["words"][step]
+            st.markdown(f"### 第 {step + 1} 关 / {lesson_total}")
+            render_word_card(current_lesson, item, show_actions=True)
 
+            col_prev, col_next = st.columns(2)
+            with col_prev:
+                if st.button("上一关", disabled=step == 0):
+                    st.session_state.current_step -= 1
+                    st.rerun()
+            with col_next:
+                next_disabled = step >= lesson_total - 1
+                if st.button("下一关", disabled=next_disabled):
+                    st.session_state.current_step += 1
+                    st.rerun()
 
-# ==========================================
-# 10. 综合挑战模式 (Tab 2)
-# ==========================================
-with tab2:
-    st.markdown("### 🏆 看看灿灿记住了多少？")
-    st.write("这里会随机抽取今天和以前学过的单词来挑战哦！")
-    st.markdown("---")
+    with tab_challenge:
+        render_challenge(current_lesson)
 
-    # 1. 构建适合当前进度的“已学单词库”
-    all_past_words = {}
-    current_day_int = int(day)
-    for d_key, d_words in course_data.items():
-        if int(d_key) <= current_day_int:
-            for w, info in d_words.items():
-                temp_info = info.copy()
-                temp_info['belong_day'] = d_key
-                all_past_words[w] = temp_info
-
-    # 如果库是空的（比如第1天），加个保护
-    if not all_past_words:
-        st.warning("灿灿，先去『学习跟读』模式学几个单词再来挑战吧！💪")
-        st.stop()
-
-    # 2. 初始化 Session State (题目缓存)
-    if 'quiz_target' in st.session_state:
-        if st.session_state.quiz_target not in all_past_words:
-            if 'quiz_mode' in st.session_state: del st.session_state.quiz_mode
-
-    if 'quiz_mode' not in st.session_state or st.sidebar.button("♻️ 换一组题"):
-        # 随机题目模式：听声音选图 vs 看图说词
-        st.session_state.quiz_mode = random.choice(["listen", "speak"])
-        
-        # 随机目标单词
-        st.session_state.quiz_target = random.choice(list(all_past_words.keys()))
-        
-        # 生成干扰项 (共4个选项)
-        pool_size = min(len(all_past_words), 4)
-        opts = random.sample(list(all_past_words.keys()), pool_size)
-        # 确保目标单词在选项中
-        if st.session_state.quiz_target not in opts:
-            opts[0] = st.session_state.quiz_target
-        random.shuffle(opts)
-        
-        st.session_state.quiz_options = opts
-        st.session_state.quiz_answered = False
-
-
-    target = st.session_state.quiz_target
-    target_info = all_past_words[target]
-
-
-    # --- 挑战模式 A: 听声音，选图片 ---
-    if st.session_state.quiz_mode == "listen":
-        st.markdown(f"#### 👂 第一关：听声音，选图片")
-        st.write("点击小喇叭，听听看是哪个单词，然后选出正确的图片：")
-        
-        # 播放目标单词声音
-        col_audio, _ = st.columns([1, 2])
-        with col_audio:
-            st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # 展示4张图片供选择
-        col1, col2 = st.columns(2)
-        for i, opt in enumerate(st.session_state.quiz_options):
-            with col1 if i % 2 == 0 else col2:
-                opt_day = all_past_words[opt]['belong_day']
-                # --- 修改：只使用本地搜图 ---
-                found_opt_img = get_local_image(opt_day, opt)
-                st.image(found_opt_img, width="stretch")
-                
-                # 选项按钮
-                if st.button(f"选这个", key=f"sel_{opt}"):
-                    if opt == target:
-                        st.success("灿灿真棒！答对了！🎉")
-                        st.balloons()
-                        st.session_state.quiz_answered = True
-                        st.session_state.challenge_correct_count += 1
-                    else:
-                        st.error("哎呀，选错了，再听一遍试试看？")
-                        add_weak_word(target_info['belong_day'], target, target_info)
-
-
-    # --- 挑战模式 B: 看图说词 ---
-    else:
-        st.markdown(f"#### 🖼️ 第二关：看图说词")
-        st.write("灿灿，大声说出这是什么？（说完点击检查答案）")
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        target_day = target_info['belong_day']
-        # --- 修改：只使用本地搜图展示目标 ---
-        found_target_img = get_local_image(target_day, target)
-        st.image(found_target_img, width="stretch")
-            
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # 检查答案按钮
-        if st.button("检查答案"):
-            st.session_state.quiz_answered = True
-            
-    # 3. 答题完成后的展示
-    if st.session_state.get('quiz_answered'):
+    with tab_weak:
+        st.markdown("### 📒 灿灿的错词本")
+        st.write("这里会收集挑战答错、或者手动标记还不熟的单词。")
         st.markdown("---")
-        st.markdown(f"**答案是：** <span style='font-size:1.5rem; color:#FF4B4B; font-weight:bold;'>{target}</span> ({target_info['chi']})", unsafe_allow_html=True)
-        st.audio(f"https://dict.youdao.com/dictvoice?audio={target}&type=2")
-        st.write(f"📖 句子：{target_info['sent']}")
-
-        col_right, col_try = st.columns(2)
-        with col_right:
-            if st.button("我说对了 ✅", key="speak_right"):
-                st.session_state.challenge_correct_count += 1
-                mark_word_learned(target_info['belong_day'], target)
-                st.success("记录成功，又拿下一题！")
-                st.rerun()
-        with col_try:
-            if st.button("还不熟，加入错词本 ⭐", key="speak_weak"):
-                add_weak_word(target_info['belong_day'], target, target_info)
-                st.rerun()
-        
-        # 挑战下一题
-        if st.button("挑战下一题 ➡️"):
-            # 清除 Session State，强制重新生成题目
-            if 'quiz_mode' in st.session_state: del st.session_state.quiz_mode
-            st.rerun()
-
-
-# ==========================================
-# 11. 错词本 (Tab 3)
-# ==========================================
-with tab3:
-    st.markdown("### 📒 灿灿的错词本")
-    st.write("这里会收集挑战答错、或者手动标记还不熟的单词。")
-    st.markdown("---")
-
-    if not st.session_state.weak_words:
-        st.success("现在错词本是空的，说明今天状态很棒！")
-    else:
-        for weak_key, weak_info in list(st.session_state.weak_words.items()):
-            st.markdown(
-                f"#### {weak_info['word']} "
-                f"<span style='color:#777; font-size:1rem;'>({weak_info['chi']}) · 第 {weak_info['day']} 天</span>",
-                unsafe_allow_html=True
-            )
-            st.image(get_local_image(weak_info["day"], weak_info["word"]), width="stretch")
-            st.audio(f"https://dict.youdao.com/dictvoice?audio={weak_info['word']}&type=2")
-            st.write(f"📖 {weak_info['sent']}")
-
-            col_mastered, col_keep = st.columns(2)
-            with col_mastered:
+        if not st.session_state.weak_words:
+            st.success("现在错词本是空的，说明状态很棒！")
+        else:
+            for weak_key, weak_info in list(st.session_state.weak_words.items()):
+                st.markdown(
+                    f"#### {weak_info['word']} "
+                    f"<span style='color:#777; font-size:1rem;'>({weak_info['chi']}) · 第 {weak_info['lesson_id']} 课</span>",
+                    unsafe_allow_html=True
+                )
+                st.image(get_local_image(weak_info["image_day"], weak_info["word"]), width="stretch")
+                st.audio(f"https://dict.youdao.com/dictvoice?audio={weak_info['word']}&type=2")
+                st.write(f"📖 {weak_info['sent']}")
                 if st.button("已经掌握，移出错词本 ✅", key=f"remove_{weak_key}"):
-                    mark_word_learned(weak_info["day"], weak_info["word"])
+                    mark_word_learned(weak_info["lesson_id"], weak_info["word"])
                     remove_weak_word(weak_key)
                     st.rerun()
-            with col_keep:
-                st.button("继续复习 💪", key=f"keep_{weak_key}", disabled=True)
+                st.markdown("<hr style='border:1px dashed #FFE0A6;'>", unsafe_allow_html=True)
 
-            st.markdown("<hr style='border:1px dashed #FFE0A6;'>", unsafe_allow_html=True)
+
+# ==========================================
+# 8. 家长模式
+# ==========================================
+else:
+    st.markdown("### 👩‍👦 家长模式")
+    st.write("这里可以选择当前课程、查看课程进度，并为后续主题和生活照片管理做准备。")
+
+    lesson_options = [lesson["id"] for lesson in lessons]
+    selected_lesson = st.selectbox(
+        "选择灿灿当前要学习哪一课",
+        lesson_options,
+        index=st.session_state.current_lesson_id - 1,
+        format_func=lambda lesson_id: get_lesson(lesson_id)["title"]
+    )
+    if selected_lesson != st.session_state.current_lesson_id:
+        st.session_state.current_lesson_id = selected_lesson
+        st.session_state.current_step = 0
+        reset_quiz()
+        st.rerun()
+
+    parent_lesson = get_lesson(selected_lesson)
+    parent_done = count_lesson_learned(parent_lesson)
+    st.info(f"{parent_lesson['title']}：已会读 {parent_done}/{len(parent_lesson['words'])} 个")
+
+    col_reset, col_next = st.columns(2)
+    with col_reset:
+        if st.button("重学本课"):
+            for item in parent_lesson["words"]:
+                st.session_state.learned_words.pop(make_word_key(parent_lesson["id"], item["word"]), None)
+            st.session_state.current_step = 0
+            st.session_state.completed_lessons.pop(str(parent_lesson["id"]), None)
+            reset_quiz()
+            st.rerun()
+    with col_next:
+        if st.button("跳到下一课", disabled=parent_lesson["id"] >= len(lessons)):
+            st.session_state.current_lesson_id = parent_lesson["id"] + 1
+            st.session_state.current_step = 0
+            reset_quiz()
+            st.rerun()
+
+    st.markdown("#### 本课 6 个单词")
+    for item in parent_lesson["words"]:
+        checked = "✅" if st.session_state.learned_words.get(make_word_key(parent_lesson["id"], item["word"])) else "⬜"
+        st.write(f"{checked} **{item['word']}**（{item['chi']}） - {item['sent']}")
+
+    st.markdown("---")
+    st.markdown("#### 后续预留")
+    st.write("下一阶段可以在这里加入：主题生成、AI 生成单词、上传多张生活照片、学习报告。")
